@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from typing import Iterable
 
@@ -6,11 +7,12 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-import web_scraper
+import web_scraper_updated as web_scraper
 
 
 MAX_MESSAGE_LEN = 4096
 MULTI_MODE_CHATS: set[int] = set()
+LOGGER = logging.getLogger(__name__)
 
 
 # ---------------- UTIL ---------------- #
@@ -22,22 +24,71 @@ def is_valid_url(url: str) -> bool:
 def scrape_single_with_existing_logic(url: str):
     output = []
     web_scraper.extract_products_info(url, output)
-    return output[0] if output else {}
+    product_info = output[0] if output else {}
+    LOGGER.info("Full product_info from extractor for %s: %s", url, product_info)
+    return product_info
 
 
 def safe_message(text: str) -> str:
     if len(text) <= MAX_MESSAGE_LEN:
         return text
-    return text[:4000] + "\n\n...truncated"
+    return text[: MAX_MESSAGE_LEN - 16] + "\n\n...truncated"
+
+
+def split_message_chunks(text: str) -> list[str]:
+    if len(text) <= MAX_MESSAGE_LEN:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+
+    while len(remaining) > MAX_MESSAGE_LEN:
+        split_at = remaining.rfind("\n\n---\n\n", 0, MAX_MESSAGE_LEN)
+        if split_at == -1:
+            split_at = remaining.rfind("\n", 0, MAX_MESSAGE_LEN)
+        if split_at == -1:
+            split_at = MAX_MESSAGE_LEN
+
+        chunk = remaining[:split_at].strip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[split_at:].lstrip()
+
+    if remaining:
+        chunks.append(remaining)
+
+    return chunks
+
+
+async def reply_text_chunked(update: Update, text: str) -> None:
+    if not update.message:
+        return
+
+    for chunk in split_message_chunks(text):
+        await update.message.reply_text(safe_message(chunk))
 
 
 def format_product_result(url: str, product_info: dict) -> str:
-    return (
-        f"URL: {url}\n"
-        f"Title: {product_info.get('Title')}\n"
-        f"Price: {product_info.get('Price')}\n"
-        f"Rating: {product_info.get('Rating')}"
-    )
+    priority_fields = ["Title", "Price", "Rating"]
+    other_fields = [key for key in product_info.keys() if key not in priority_fields]
+    ordered_fields = priority_fields + other_fields
+
+    lines = [f"URL: {url}"]
+    for key in ordered_fields:
+        value = product_info.get(key)
+
+        if isinstance(value, str):
+            value = value.strip()
+
+        if value in (None, "", [], {}, ()):
+            continue
+
+        lines.append(f"{key}: {value}")
+
+    if len(lines) == 1:
+        lines.append("No non-empty product fields found")
+
+    return "\n".join(lines)
 
 
 def parse_urls_from_lines(lines: Iterable[str]) -> list[str]:
@@ -108,9 +159,7 @@ async def scrape_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("Failed to scrape URL")
         return
 
-    await update.message.reply_text(
-        safe_message(format_product_result(url, product_info))
-    )
+    await reply_text_chunked(update, format_product_result(url, product_info))
 
 
 async def multi_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -146,9 +195,7 @@ async def multi_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     results = await process_urls_sequentially(urls)
 
-    await update.message.reply_text(
-        safe_message("\n\n---\n\n".join(results))
-    )
+    await reply_text_chunked(update, "\n\n---\n\n".join(results))
 
 
 async def file_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -176,9 +223,7 @@ async def file_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         results = await process_urls_sequentially(urls)
 
-        await update.message.reply_text(
-            safe_message("\n\n---\n\n".join(results))
-        )
+        await reply_text_chunked(update, "\n\n---\n\n".join(results))
 
     except Exception as exc:
         await update.message.reply_text(safe_message(f"Error: {exc}"))
@@ -211,6 +256,7 @@ def build_app() -> Application:
 
 def main() -> None:
     try:
+        logging.basicConfig(level=logging.INFO)
         print("🚀 Bot starting...")
         app = build_app()
         print("✅ Bot running...")
