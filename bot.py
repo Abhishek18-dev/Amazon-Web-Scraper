@@ -285,6 +285,10 @@ def main():
     print("✅ Bot running...")
 
     # ✅ FINAL FIX (IMPORTANT)
+
+    # 🔥 IMPORTANT FIX (event loop create)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     app.run_polling()
 
 
