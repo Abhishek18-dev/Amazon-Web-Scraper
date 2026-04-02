@@ -180,16 +180,44 @@ async def multi_input_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     chat_id = update.effective_chat.id
 
-    if chat_id not in MULTI_MODE_CHATS:
-        return
-
-    MULTI_MODE_CHATS.discard(chat_id)
-
     urls = parse_urls_from_lines(update.message.text.splitlines()) if update.message.text else []
 
     if not urls:
-        await update.message.reply_text("No URLs found. Use /multi again.")
+        if chat_id in MULTI_MODE_CHATS:
+            MULTI_MODE_CHATS.discard(chat_id)
+            await update.message.reply_text("No URLs found. Use /multi again.")
         return
+
+    # If user did not start /multi, treat plain message with one URL as a single scrape.
+    if chat_id not in MULTI_MODE_CHATS:
+        if len(urls) != 1:
+            await update.message.reply_text(
+                "Send one URL directly, or use /multi for multiple URLs."
+            )
+            return
+
+        url = urls[0]
+
+        if not is_valid_url(url):
+            await update.message.reply_text("Invalid URL")
+            return
+
+        await update.message.reply_text("Scraping... ⏳")
+
+        try:
+            product_info = await asyncio.to_thread(scrape_single_with_existing_logic, url)
+        except Exception as exc:
+            await update.message.reply_text(safe_message(f"Error: {exc}"))
+            return
+
+        if not product_info:
+            await update.message.reply_text("Failed to scrape URL")
+            return
+
+        await reply_text_chunked(update, format_product_result(url, product_info))
+        return
+
+    MULTI_MODE_CHATS.discard(chat_id)
 
     await update.message.reply_text(f"Processing {len(urls)} URLs...")
 
