@@ -259,7 +259,7 @@ async def file_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # ---------------- APP ---------------- #
 
-def build_app() -> Application:
+async def main() -> None:
     load_dotenv()
 
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -271,6 +271,9 @@ def build_app() -> Application:
             "TELEGRAM_BOT_TOKEN=your_token"
         )
 
+    logging.basicConfig(level=logging.INFO)
+    print("🚀 Bot starting...")
+
     app = ApplicationBuilder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -279,23 +282,13 @@ def build_app() -> Application:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, multi_input_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, file_upload_handler))
 
-    return app
-
-
-async def run_bot() -> None:
-    logging.basicConfig(level=logging.INFO)
-    print("🚀 Bot starting...")
-    app = build_app()
     print("✅ Bot running...")
-    await asyncio.to_thread(app.run_polling, stop_signals=None)
 
-
-def main() -> None:
     try:
-        asyncio.run(run_bot())
+        await app.run_polling()
     except RuntimeError as exc:
         print(exc)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
