@@ -1,6 +1,5 @@
 beautifulsoup4==4.13.4
 certifi==2025.8.3
-lxml==4.9.3
 pycparser==2.22
 requests==2.32.4
 soupsieve==2.7

@@ -205,7 +205,7 @@ def extract_products_info(url, output):
         return product_info
 
     try:
-        soup = bs4.BeautifulSoup(html_content, "lxml")
+        soup = bs4.BeautifulSoup(html_content, "html.parser")
     except bs4.FeatureNotFound:
         soup = bs4.BeautifulSoup(html_content, "html.parser")
 
