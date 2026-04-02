@@ -5,7 +5,7 @@ from typing import Iterable
 
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 import web_scraper_updated as web_scraper
 
@@ -271,7 +271,7 @@ def build_app() -> Application:
             "TELEGRAM_BOT_TOKEN=your_token"
         )
 
-    app = Application.builder().token(token).build()
+    app = ApplicationBuilder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("scrape", scrape_command))
@@ -282,13 +282,17 @@ def build_app() -> Application:
     return app
 
 
+async def run_bot() -> None:
+    logging.basicConfig(level=logging.INFO)
+    print("🚀 Bot starting...")
+    app = build_app()
+    print("✅ Bot running...")
+    await asyncio.to_thread(app.run_polling, stop_signals=None)
+
+
 def main() -> None:
     try:
-        logging.basicConfig(level=logging.INFO)
-        print("🚀 Bot starting...")
-        app = build_app()
-        print("✅ Bot running...")
-        app.run_polling()
+        asyncio.run(run_bot())
     except RuntimeError as exc:
         print(exc)
 
